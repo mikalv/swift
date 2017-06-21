@@ -10,7 +10,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"testing"
+	"time"
 )
 
 const (
@@ -429,4 +431,128 @@ func TestInternalObjectPutString(t *testing.T) {
 	}).Rx("12345")
 	defer server.Finished()
 	c.ObjectPutString("container", "object", "12345", "text/plain")
+}
+
+func TestSetFromEnv(t *testing.T) {
+	// String
+	s := ""
+
+	os.Setenv("POTATO", "")
+	err := setFromEnv(&s, "POTATO")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	os.Setenv("POTATO", "this is a test")
+	err = setFromEnv(&s, "POTATO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s != "this is a test" {
+		t.Fatal("incorrect", s)
+	}
+
+	os.Setenv("POTATO", "new")
+	err = setFromEnv(&s, "POTATO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s != "this is a test" {
+		t.Fatal("was reset when it shouldn't have been")
+	}
+
+	// Integer
+	i := 0
+
+	os.Setenv("POTATO", "42")
+	err = setFromEnv(&i, "POTATO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i != 42 {
+		t.Fatal("incorrect", i)
+	}
+
+	os.Setenv("POTATO", "43")
+	err = setFromEnv(&i, "POTATO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i != 42 {
+		t.Fatal("was reset when it shouldn't have been")
+	}
+
+	i = 0
+	os.Setenv("POTATO", "not a number")
+	err = setFromEnv(&i, "POTATO")
+	if err == nil {
+		t.Fatal("expecting error but didn't get one")
+	}
+
+	// bool
+	var b bool
+	os.Setenv("POTATO", "1")
+	err = setFromEnv(&b, "POTATO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b != true {
+		t.Fatal("incorrect", b)
+	}
+
+	// time.Duration
+	var dt time.Duration
+	os.Setenv("POTATO", "5")
+	err = setFromEnv(&dt, "POTATO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dt != 5*time.Second {
+		t.Fatal("incorrect", dt)
+	}
+
+	// EndpointType
+	var e EndpointType
+	os.Setenv("POTATO", "internal")
+	err = setFromEnv(&e, "POTATO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e != EndpointType("internal") {
+		t.Fatal("incorrect", e)
+	}
+
+	// Unknown
+	var unknown struct{}
+	err = setFromEnv(&unknown, "POTATO")
+	if err == nil {
+		t.Fatal("expecting error")
+	}
+
+	os.Setenv("POTATO", "")
+}
+
+func TestApplyEnvironment(t *testing.T) {
+	// We've tested all the setting logic above, so just do a quick test here
+	c := new(Connection)
+	os.Setenv("GOSWIFT_CONNECT_TIMEOUT", "100")
+	err := c.ApplyEnvironment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.ConnectTimeout != 100*time.Second {
+		t.Fatal("timeout incorrect", c.ConnectTimeout)
+	}
+
+	c.ConnectTimeout = 0
+	os.Setenv("GOSWIFT_CONNECT_TIMEOUT", "parse error")
+	err = c.ApplyEnvironment()
+	if err == nil {
+		t.Fatal("expecting error")
+	}
+	if c.ConnectTimeout != 0 {
+		t.Fatal("timeout incorrect", c.ConnectTimeout)
+	}
+
+	os.Setenv("GOSWIFT_CONNECT_TIMEOUT", "")
 }
